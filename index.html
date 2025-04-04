@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Dynamic Text Parser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      @font-face {
+        font-family: 'LucideIcons';
+        /* Corrected CDN link */
+        src: url(https://cdn.jsdelivr.net/npm/lucide-static@latest/font/Lucide.ttf) format('truetype');
+      }
+      .lucide {
+        font-family: 'LucideIcons';
+        font-size: 1.1rem; /* Slightly smaller default */
+        line-height: 1;
+        display: inline-block;
+        font-style: normal;
+        font-weight: normal;
+        font-variant: normal;
+        text-rendering: auto;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        vertical-align: middle; /* Align icons better with text */
+      }
+      /* Basic styles */
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f3f4f6; /* Tailwind gray-100 */
+      }
+      /* Style for the parsed text area */
+      #parsed-text {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        font-family: monospace;
+        background-color: #ffffff;
+        border: 1px solid #d1d5db; /* gray-300 */
+        border-radius: 0.375rem; /* rounded-md */
+        padding: 1rem; /* p-4 */
+        min-height: 200px;
+        max-height: 50vh;
+        overflow-y: auto;
+        user-select: text;
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+      }
+      /* Loading spinner */
+      .loader {
+        border: 4px solid #f3f4f6;
+        border-top: 4px solid #3b82f6; /* blue-500 */
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        margin-left: 0.5rem;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      /* Message box */
+      #message-box {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0.75rem 1.25rem; /* Adjusted padding */
+        border-radius: 0.375rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        display: none;
+        font-weight: 500;
+        font-size: 0.875rem; /* text-sm */
+      }
+      #message-box.success {
+        background-color: #dcfce7; /* green-100 */
+        color: #166534; /* green-800 */
+      }
+      #message-box.error {
+        background-color: #fee2e2; /* red-100 */
+        color: #991b1b; /* red-800 */
+      }
+      /* Style for copy buttons */
+      .copy-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #6b7280; /* gray-500 */
+        margin-left: 0.25rem; /* ml-1 */
+        padding: 0.1rem;
+        border-radius: 0.25rem; /* rounded-sm */
+        transition: background-color 0.2s, color 0.2s;
+      }
+      .copy-btn:hover {
+        background-color: #e5e7eb; /* gray-200 */
+        color: #1f2937; /* gray-800 */
+      }
+      .copy-btn .lucide {
+        font-size: 0.9rem; /* Smaller icon for copy buttons */
+      }
+      /* Styling for code blocks within info */
+      #parsing-info code {
+        background-color: #e5e7eb; /* gray-200 */
+        color: #be123c; /* rose-700 */
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.25rem;
+        font-family: monospace;
+        font-size: 0.85em; /* Slightly smaller */
+      }
+       #parsing-info pre {
+        background-color: #f9fafb; /* gray-50 */
+        border: 1px solid #e5e7eb; /* gray-200 */
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        margin-top: 0.25rem; /* mt-1 */
+        max-height: 100px; /* Limit height */
+        overflow-y: auto; /* Add scroll if needed */
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        font-size: 0.8rem; /* Smaller font for pre */
+      }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto bg-white p-6 md:p-8 rounded-lg shadow-lg"> <h1 class="text-2xl md:text-3xl font-bold mb-6 text-gray-800 flex items-center">
+             <span class="lucide mr-2 text-blue-600">&#xea38;</span> Enhanced Dynamic Text Parser
+        </h1>
+
+        <div id="message-box"></div>
+
+        <div class="mb-6 border border-gray-200 p-4 rounded-md bg-gray-50">
+            <label for="file-input" class="block text-sm font-medium text-gray-700 mb-2">
+                1. Upload PDF or Excel File (.pdf, .xlsx, .xls, .csv)
+            </label>
+            <div class="flex items-center space-x-3">
+                 <input type="file" id="file-input" accept=".pdf,.xlsx,.xls,.csv"
+                       class="block w-full text-sm text-gray-500
+                              file:mr-4 file:py-2 file:px-4
+                              file:rounded-md file:border-0
+                              file:text-sm file:font-semibold
+                              file:bg-blue-100 file:text-blue-700
+                              hover:file:bg-blue-200 transition-colors" />
+                 <div id="loading-indicator" class="hidden">
+                     <div class="loader"></div>
+                 </div>
+            </div>
+            <p id="file-info" class="text-xs text-gray-500 mt-2 h-4"></p> </div>
+
+        <div class="mb-6">
+            <h2 class="text-lg font-semibold mb-2 text-gray-700">2. Parsed Text Content</h2>
+            <p class="text-sm text-gray-500 mb-2">Select text below to generate parsing info.</p>
+            <div id="parsed-text" class="border border-gray-300 rounded-md p-4 bg-white min-h-[200px] max-h-[50vh] overflow-y-auto text-sm leading-relaxed shadow-inner">
+                <span class="text-gray-400">Upload a file to see its content here...</span>
+            </div>
+        </div>
+
+        <div>
+            <h2 class="text-lg font-semibold mb-2 text-gray-700">3. Selection Parsing Info</h2>
+            <div id="parsing-info" class="border border-gray-300 rounded-md p-4 bg-gray-50 min-h-[150px] space-y-4 text-sm"> <span class="text-gray-400">Select text above to see parsing details...</span>
+            </div>
+             <div class="mt-4 text-right">
+                 <button id="copy-ai-btn"
+                         class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md text-sm transition-colors shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ml-auto"
+                         disabled> <span class="lucide mr-2">&#xe9b8;</span> Copy Info for AI
+                 </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- DOM Element References ---
+        const fileInput = document.getElementById('file-input');
+        const parsedTextContainer = document.getElementById('parsed-text');
+        const parsingInfoContainer = document.getElementById('parsing-info');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const fileInfo = document.getElementById('file-info');
+        const messageBox = document.getElementById('message-box');
+        const copyAiButton = document.getElementById('copy-ai-btn');
+
+        // --- Global Variables ---
+        let fullParsedText = ''; // Store the full text
+        let currentParsingData = null; // Store the generated data for the AI copy function
+
+        // --- Utility Functions ---
+
+        /**
+         * Displays messages (success or error) to the user.
+         * @param {string} message - The message text.
+         * @param {'success' | 'error'} type - The type of message.
+         * @param {number} duration - How long to display (ms). Default 3000ms.
+         */
+        function showMessage(message, type = 'success', duration = 3000) {
+            messageBox.textContent = message;
+            messageBox.className = type === 'success' ? 'success' : 'error';
+            messageBox.style.display = 'block';
+            // Automatically hide after duration
+            setTimeout(() => {
+                // Basic fade out effect
+                messageBox.style.transition = 'opacity 0.5s ease-out';
+                messageBox.style.opacity = '0';
+                setTimeout(() => {
+                    messageBox.style.display = 'none';
+                    messageBox.style.opacity = '1'; // Reset opacity
+                    messageBox.style.transition = ''; // Reset transition
+                }, 500); // Wait for fade out
+            }, duration);
+        }
+
+        /**
+         * Escapes special regex characters in a string.
+         * @param {string} str - The input string.
+         * @returns {string} - The escaped string.
+         */
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        /**
+         * Gets the line number for a given character offset.
+         * @param {string} text - The full text content.
+         * @param {number} offset - The character offset.
+         * @returns {number} - The 1-based line number.
+         */
+        function getLineNumber(text, offset) {
+            if (offset < 0 || offset > text.length) return -1;
+            return text.substring(0, offset).split('\n').length;
+        }
+
+        /**
+         * Creates a small copy button.
+         * @param {string} textToCopy - The text this button should copy.
+         * @returns {string} - HTML string for the button.
+         */
+        function createCopyButton(textToCopy) {
+            // Use data attribute to store text, avoid issues with quotes in the text itself
+            const uniqueId = `copy-btn-${Math.random().toString(36).substring(2, 9)}`;
+            // Need to attach event listener separately after inserting HTML
+            return `<button class="copy-btn" data-copy-target-id="${uniqueId}" title="Copy">
+                        <span class="lucide">&#xe9b8;</span> </button>
+                    <span id="${uniqueId}" style="display: none;">${escapeHtml(textToCopy)}</span>`; // Store text safely
+        }
+
+        /**
+         * Escapes HTML special characters
+         * @param {string} unsafe - The potentially unsafe string.
+         * @returns {string} - The escaped string.
+         */
+         function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+         }
+
+        /**
+         * Attaches click listeners to copy buttons within a container.
+         * @param {HTMLElement} container - The parent element containing copy buttons.
+         */
+        function attachCopyListeners(container) {
+            container.querySelectorAll('.copy-btn').forEach(button => {
+                button.onclick = async (event) => {
+                    event.stopPropagation(); // Prevent triggering other listeners like text selection
+                    const targetId = button.getAttribute('data-copy-target-id');
+                    const targetElement = document.getElementById(targetId);
+                    if (targetElement) {
+                        const text = targetElement.textContent; // Get text from hidden span
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            showMessage('Copied to clipboard!', 'success', 1500); // Shorter duration for quick copies
+                        } catch (err) {
+                            console.error('Failed to copy text: ', err);
+                            showMessage('Failed to copy.', 'error');
+                        }
+                    }
+                };
+            });
+        }
+
+        // --- Core Logic Functions ---
+
+        /**
+         * Parses a PDF file. (Error handling improved slightly)
+         * @param {File} file - The PDF file object.
+         */
+        async function parsePdf(file) {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const typedarray = new Uint8Array(event.target.result);
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+                try {
+                    const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+                    let textContent = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const text = await page.getTextContent({ normalizeWhitespace: true }); // Added normalizeWhitespace
+                        // Improved text joining logic (still heuristic)
+                        let pageText = '';
+                        let lastY = null;
+                        let lastX = null;
+                        text.items.forEach(item => {
+                            const currentY = item.transform[5];
+                            const currentX = item.transform[4];
+                            // Add newline if Y significantly decreased OR if Y is same but X reset (new column guess)
+                            if (lastY !== null && (currentY < lastY - item.height * 0.5 || (Math.abs(currentY - lastY) < item.height * 0.2 && currentX < lastX - item.width))) {
+                                pageText += '\n';
+                            } else if (lastX !== null && currentX > lastX + item.width) { // Add space if X increased (simple word spacing)
+                                pageText += ' ';
+                            }
+                            pageText += item.str;
+                            lastY = currentY;
+                            lastX = currentX;
+                        });
+                        textContent += pageText + '\n\n'; // Page break
+                    }
+                    fullParsedText = textContent.trim();
+                    parsedTextContainer.textContent = fullParsedText;
+                    showMessage('PDF parsed successfully!', 'success');
+                } catch (error) {
+                    console.error('Error parsing PDF:', error);
+                    parsedTextContainer.textContent = `Error parsing PDF: ${error.message}. See console for details.`;
+                    showMessage(`Error parsing PDF: ${error.message}`, 'error', 5000);
+                } finally {
+                    loadingIndicator.classList.add('hidden');
+                    fileInfo.textContent = `Parsed: ${file.name}`;
+                }
+            };
+            reader.onerror = () => {
+                console.error('Error reading file:', reader.error);
+                parsedTextContainer.textContent = 'Error reading file.';
+                showMessage('Error reading file.', 'error');
+                loadingIndicator.classList.add('hidden');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * Parses an Excel file. (Error handling improved slightly)
+         * @param {File} file - The Excel file object.
+         */
+        function parseExcel(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    let textContent = '';
+                    workbook.SheetNames.forEach((sheetName) => {
+                        const worksheet = workbook.Sheets[sheetName];
+                        // Use sheet_to_txt for potentially better spacing than CSV with tabs
+                        const sheetText = XLSX.utils.sheet_to_txt(worksheet, { raw: false }); // raw:false tries to format values
+                        textContent += `--- Sheet: ${sheetName} ---\n\n${sheetText}\n\n`;
+                    });
+                    fullParsedText = textContent.trim();
+                    parsedTextContainer.textContent = fullParsedText;
+                    showMessage('Excel file parsed successfully!', 'success');
+                } catch (error) {
+                    console.error('Error parsing Excel file:', error);
+                    parsedTextContainer.textContent = `Error parsing Excel file: ${error.message}. See console for details.`;
+                    showMessage(`Error parsing Excel file: ${error.message}`, 'error', 5000);
+                } finally {
+                    loadingIndicator.classList.add('hidden');
+                     fileInfo.textContent = `Parsed: ${file.name}`;
+                }
+            };
+             reader.onerror = () => {
+                console.error('Error reading file:', reader.error);
+                parsedTextContainer.textContent = 'Error reading file.';
+                showMessage('Error reading file.', 'error');
+                loadingIndicator.classList.add('hidden');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        /**
+         * Generates parsing information based on the selected text.
+         */
+        function generateParsingInfo() {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !fullParsedText) {
+                parsingInfoContainer.innerHTML = '<span class="text-gray-400">Select text above to see parsing details...</span>';
+                copyAiButton.disabled = true;
+                currentParsingData = null;
+                return;
+            }
+
+            const selectedText = selection.toString();
+            const range = selection.getRangeAt(0);
+
+            // --- Calculate Offsets (relative to fullParsedText) ---
+            let startOffset = -1, endOffset = -1;
+            try {
+                // This calculation relies on the container having the *exact same* text content
+                // as `fullParsedText`. If parsing introduced discrepancies visible in the DOM
+                // but not in `fullParsedText`, offsets could be wrong.
+                const containerRange = document.createRange();
+                containerRange.selectNodeContents(parsedTextContainer);
+                containerRange.setEnd(range.startContainer, range.startOffset);
+                startOffset = containerRange.toString().length;
+
+                containerRange.setEnd(range.endContainer, range.endOffset);
+                endOffset = containerRange.toString().length;
+
+                // Sanity check: Ensure the selected text matches the slice from fullParsedText
+                const checkText = fullParsedText.substring(startOffset, endOffset);
+                 if (checkText !== selectedText) {
+                    console.warn("Selection mismatch - DOM text might differ from stored text. Offsets may be approximate.");
+                    // Attempt to find the selection within fullParsedText as a fallback
+                    const foundIndex = fullParsedText.indexOf(selectedText);
+                    if (foundIndex !== -1) {
+                        startOffset = foundIndex;
+                        endOffset = startOffset + selectedText.length;
+                         console.warn(`Fallback: Found selection at index ${startOffset}.`);
+                    } else {
+                         console.error("Could not reliably determine selection offsets.");
+                         // Keep calculated offsets but they might be wrong
+                    }
+                 }
+
+            } catch (e) {
+                console.error("Error calculating offsets:", e);
+                showMessage("Error calculating text offsets.", "error");
+                 parsingInfoContainer.innerHTML = '<span class="text-red-500">Error calculating text offsets.</span>';
+                copyAiButton.disabled = true;
+                currentParsingData = null;
+                return;
+            }
+
+
+            // --- Generate Information ---
+            const charCount = selectedText.length;
+            const startLine = getLineNumber(fullParsedText, startOffset);
+            const endLine = getLineNumber(fullParsedText, endOffset);
+            const literalRegex = escapeRegex(selectedText);
+            const contextChars = 50; // Number of chars before/after for context snippet
+            const contextBefore = fullParsedText.substring(Math.max(0, startOffset - contextChars), startOffset);
+            const contextAfter = fullParsedText.substring(endOffset, Math.min(fullParsedText.length, endOffset + contextChars));
+            const contextSnippet = `${contextBefore}[SELECTED]${selectedText}[/SELECTED]${contextAfter}`.replace(/\n/g, '↵'); // Show newlines visually
+
+            const data = {
+                selectedText: selectedText,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                charCount: charCount,
+                startLine: startLine,
+                endLine: endLine,
+                literalRegex: literalRegex,
+                potentialPatterns: [],
+                contextSnippet: contextSnippet,
+                contextBefore: contextBefore,
+                contextAfter: contextAfter
+            };
+
+            // --- Add Potential Patterns ---
+            const patterns = data.potentialPatterns; // Alias for brevity
+            if (/^\s+$/.test(selectedText)) patterns.push({ desc: "Only Whitespace", regex: '\\s+' });
+            else if (/\s/.test(selectedText)) patterns.push({ desc: "Contains Whitespace", regex: '\\s' });
+            if (/^\d+$/.test(selectedText)) patterns.push({ desc: "Only Digits", regex: '\\d+' });
+            if (/^\d{1,3}(,\d{3})*(\.\d+)?$/.test(selectedText) || /^\d+(\.\d+)?$/.test(selectedText)) patterns.push({ desc: "Number (int/float)", regex: '\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?' });
+            if (/^\$[ ]?\d{1,3}(,\d{3})*(\.\d+)?$/.test(selectedText) || /^€[ ]?\d{1,3}(\.\d{3})*(\,\d+)?$/.test(selectedText)) patterns.push({ desc: "Currency ($ or €)", regex: '[$€][ ]?\\d{1,3}(?:[,.]\\d{3})*(?:[.,]\\d+)?' }); // Basic currency
+            if (/^[a-zA-Z]+$/.test(selectedText)) patterns.push({ desc: "Only Letters", regex: '[a-zA-Z]+' });
+            if (/^[a-zA-Z0-9]+$/.test(selectedText)) patterns.push({ desc: "Letters & Digits", regex: '[a-zA-Z0-9]+' });
+            if (/\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/.test(selectedText)) patterns.push({ desc: "Date-like (Y-M-D / M-D-Y)", regex: '\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}[-/]\\d{1,2}[-/]\\d{2,4}' });
+            if (/\S+@\S+\.\S+/.test(selectedText)) patterns.push({ desc: "Email-like", regex: '\\S+@\\S+\\.\\S+' });
+            if (/^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(selectedText)) patterns.push({ desc: "URL-like", regex: '(https?:\\/\\/)?([\\da-z.-]+)\\.([a-z.]{2,6})([\\/\\w .-]*)*/?\\/?' });
+            if (/^(\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$/.test(selectedText)) patterns.push({ desc: "Phone Number-like (US)", regex: '(\\+\\d{1,2}\\s?)?\\(?\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]?\\d{4}'});
+
+            // --- Display ---
+             let infoHtml = `
+                <div>
+                    <strong class="font-semibold block mb-1">Selected Text:</strong>
+                    <pre>${escapeHtml(data.selectedText)}</pre>
+                </div>
+                <div>
+                    <strong class="font-semibold block mb-1">Location & Size:</strong>
+                    <ul class="list-disc list-inside text-xs space-y-0.5">
+                        <li>Starts: Char ${data.startOffset + 1}, Line ${data.startLine}</li>
+                        <li>Ends: Char ${data.endOffset}, Line ${data.endLine}</li>
+                        <li>Length: ${data.charCount} characters</li>
+                    </ul>
+                </div>
+                 <div>
+                    <strong class="font-semibold block mb-1">Literal Regex Match:</strong>
+                    <code>/${data.literalRegex}/</code>
+                    ${createCopyButton(`/${data.literalRegex}/`)}
+                </div>
+                 <div>
+                    <strong class="font-semibold block mb-1">Context Snippet:</strong>
+                    <pre class="text-gray-600">${escapeHtml(data.contextSnippet)}</pre>
+                </div>
+            `;
+
+            if (data.potentialPatterns.length > 0) {
+                infoHtml += `<div><strong class="font-semibold block mb-1">Potential Patterns:</strong><ul class="list-disc list-inside space-y-1">`;
+                data.potentialPatterns.forEach(p => {
+                    const regex = `/${p.regex}/`;
+                    infoHtml += `<li>${escapeHtml(p.desc)}: <code>${escapeHtml(regex)}</code> ${createCopyButton(regex)}</li>`;
+                });
+                infoHtml += `</ul></div>`;
+            } else {
+                 infoHtml += `<div><strong class="font-semibold block mb-1">Potential Patterns:</strong> <span class="text-gray-500">No specific patterns detected.</span></div>`;
+            }
+
+            parsingInfoContainer.innerHTML = infoHtml;
+            attachCopyListeners(parsingInfoContainer); // Attach listeners to new buttons
+            copyAiButton.disabled = false; // Enable the main copy button
+            currentParsingData = data; // Store for the AI copy button
+        }
+
+        // --- Event Listeners ---
+
+        // Handle file input changes
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Reset UI
+            parsedTextContainer.innerHTML = '<span class="text-gray-400">Parsing file...</span>';
+            parsingInfoContainer.innerHTML = '<span class="text-gray-400">Select text above to see parsing details...</span>';
+            fileInfo.textContent = `Processing: ${file.name}...`;
+            loadingIndicator.classList.remove('hidden');
+            copyAiButton.disabled = true;
+            fullParsedText = '';
+            currentParsingData = null;
+
+            // Determine file type and parse
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            if (fileExtension === 'pdf') {
+                parsePdf(file);
+            } else if (['xlsx', 'xls', 'csv'].includes(fileExtension)) {
+                parseExcel(file);
+            } else {
+                parsedTextContainer.textContent = 'Unsupported file type. Please upload a PDF or Excel file.';
+                showMessage('Unsupported file type.', 'error');
+                loadingIndicator.classList.add('hidden');
+                fileInfo.textContent = `Failed: ${file.name}`;
+            }
+        });
+
+        // Handle text selection changes
+        parsedTextContainer.addEventListener('mouseup', generateParsingInfo);
+        parsedTextContainer.addEventListener('keyup', generateParsingInfo); // For keyboard selection
+
+        // Handle "Copy for AI" button click
+        copyAiButton.addEventListener('click', async () => {
+            if (!currentParsingData) {
+                showMessage('No parsing data available to copy.', 'error');
+                return;
+            }
+
+            // Format data for AI prompt
+            let aiText = `Context for AI Text Parsing Task:
+
+Selected Text:
+---
+${currentParsingData.selectedText}
+---
+
+Location in Full Parsed Text:
+- Starts at Character Index (0-based): ${currentParsingData.startOffset}
+- Starts at Line Number (1-based): ${currentParsingData.startLine}
+- Ends at Character Index (exclusive): ${currentParsingData.endOffset}
+- Ends at Line Number (1-based): ${currentParsingData.endLine}
+- Character Length: ${currentParsingData.charCount}
+
+Literal Regex for Exact Match:
+/${currentParsingData.literalRegex}/
+
+Context Snippet (Showing text around selection):
+---
+${currentParsingData.contextBefore}[SELECTED TEXT STARTS]${currentParsingData.selectedText}[SELECTED TEXT ENDS]${currentParsingData.contextAfter}
+---
+
+Detected Potential Patterns in Selection:
+`;
+            if (currentParsingData.potentialPatterns.length > 0) {
+                currentParsingData.potentialPatterns.forEach(p => {
+                    aiText += `- ${p.desc}: /${p.regex}/\n`;
+                });
+            } else {
+                aiText += "- None detected.\n";
+            }
+
+            aiText += `
+Instructions for AI: Based on the selected text and its context within the larger document (represented by the snippet), please help with parsing. For example, suggest robust regex patterns, data extraction logic, or code snippets (e.g., Python, JavaScript) to reliably capture this type of data from similar documents. Consider the surrounding text for patterns or delimiters.`;
+
+            try {
+                await navigator.clipboard.writeText(aiText);
+                showMessage('Parsing info formatted and copied for AI!', 'success', 2500);
+                // Optional: Visual feedback on button
+                copyAiButton.innerHTML = `<span class="lucide mr-2">&#xe65e;</span> Copied!`; // Check icon
+                setTimeout(() => {
+                     copyAiButton.innerHTML = `<span class="lucide mr-2">&#xe9b8;</span> Copy Info for AI`; // Reset icon/text
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy AI text: ', err);
+                showMessage('Failed to copy for AI.', 'error');
+            }
+        });
+
+
+        // --- Initialization ---
+        parsedTextContainer.innerHTML = '<span class="text-gray-400">Upload a file to see its content here...</span>';
+        parsingInfoContainer.innerHTML = '<span class="text-gray-400">Select text above to see parsing details...</span>';
+        copyAiButton.disabled = true; // Ensure button is disabled initially
+
+    </script>
+
+</body>
+</html>
